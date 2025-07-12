@@ -83,6 +83,7 @@ public class BloodhuntManager {
 
         PoseStack poseStack = event.getPoseStack();
         Vec3 cameraPos = minecraft.gameRenderer.getMainCamera().getPosition();
+        Vec3 playerPos = minecraft.player.position();
         
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
@@ -100,7 +101,25 @@ public class BloodhuntManager {
         // Calculate how many points to show based on progress
         int pointsToShow = Math.max(1, (int)(currentPath.size() * pathProgress));
         
-        for (int i = 0; i < pointsToShow - 1; i++) {
+        // Find the closest point on the path to the player
+        int closestPointIndex = 0;
+        double closestDistSq = Double.MAX_VALUE;
+        
+        for (int i = 0; i < currentPath.size(); i++) {
+            BlockPos pos = currentPath.get(i);
+            double dx = playerPos.x - (pos.getX() + 0.5);
+            double dy = playerPos.y - (pos.getY() + 0.5);
+            double dz = playerPos.z - (pos.getZ() + 0.5);
+            double distSq = dx * dx + dy * dy + dz * dz;
+            
+            if (distSq < closestDistSq) {
+                closestDistSq = distSq;
+                closestPointIndex = i;
+            }
+        }
+        
+        // Only render points ahead of the player
+        for (int i = closestPointIndex; i < pointsToShow - 1; i++) {
             BlockPos current = currentPath.get(i);
             BlockPos next = currentPath.get(i + 1);
             
