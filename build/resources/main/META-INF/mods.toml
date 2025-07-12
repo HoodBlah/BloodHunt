@@ -1,0 +1,29 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="bloodhunt"
+version="1.0.0"
+displayName="Bloodhunt"
+description='''
+A mod that creates visible particle paths to selected nearby entities.
+Features include:
+- Entity selection GUI
+- Advanced pathfinding
+- Blood particle trail effects
+'''
+
+[[dependencies.bloodhunt]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.bloodhunt]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1]"
+    ordering="NONE"
+    side="BOTH" 
