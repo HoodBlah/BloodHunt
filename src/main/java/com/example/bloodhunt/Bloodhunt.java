@@ -1,7 +1,6 @@
 package com.example.bloodhunt;
 
 import com.example.bloodhunt.client.KeyBindings;
-import com.example.bloodhunt.particle.ModParticles;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -15,9 +14,6 @@ public class Bloodhunt {
 
     public Bloodhunt() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
-        
-        // Register particle types
-        ModParticles.PARTICLE_TYPES.register(modEventBus);
         
         // Register keybindings
         modEventBus.addListener((RegisterKeyMappingsEvent event) -> {
