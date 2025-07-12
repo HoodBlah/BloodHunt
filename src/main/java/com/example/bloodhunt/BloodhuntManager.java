@@ -30,9 +30,10 @@ public class BloodhuntManager {
     private static LivingEntity currentTarget = null;
     private static float pathProgress = 0f;
     private static final float PATH_ANIMATION_SPEED = 0.05f;
-    private static final float LINE_WIDTH = 5.0f; // Increased line width
+    private static final float LINE_WIDTH = 5.0f;
+    private static final float LINE_HEIGHT = 5.0f; // Height of the line in pixels
     private static int pathUpdateTimer = 0;
-    private static final int PATH_UPDATE_INTERVAL = 20; // Update path every second (20 ticks)
+    private static final int PATH_UPDATE_INTERVAL = 6; // Update every 0.3 seconds (6 ticks)
 
     @OnlyIn(Dist.CLIENT)
     @SubscribeEvent
@@ -112,7 +113,7 @@ public class BloodhuntManager {
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableDepthTest();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.lineWidth(LINE_WIDTH); // Set thicker line width
+        RenderSystem.lineWidth(LINE_WIDTH);
 
         // Draw the path
         VertexConsumer builder = minecraft.renderBuffers().bufferSource().getBuffer(RenderType.lines());
@@ -138,27 +139,50 @@ public class BloodhuntManager {
             }
         }
 
-        // Draw thicker lines by rendering multiple offset lines
+        // Draw thicker and taller lines
         for (int i = closestPointIndex; i < pointsToShow - 1; i++) {
             BlockPos current = currentPath.get(i);
             BlockPos next = currentPath.get(i + 1);
             
-            // Main line
-            builder.vertex(pose, current.getX() + 0.5f, current.getY() + 0.5f, current.getZ() + 0.5f)
-                .color(0.8f, 0f, 0f, 0.8f)
-                .normal(0, 1, 0)
-                .endVertex();
-            builder.vertex(pose, next.getX() + 0.5f, next.getY() + 0.5f, next.getZ() + 0.5f)
-                .color(0.8f, 0f, 0f, 0.8f)
-                .normal(0, 1, 0)
-                .endVertex();
+            // Calculate direction vector
+            float dx = next.getX() - current.getX();
+            float dy = next.getY() - current.getY();
+            float dz = next.getZ() - current.getZ();
+            float length = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+            
+            // Normalize direction
+            if (length > 0) {
+                dx /= length;
+                dy /= length;
+                dz /= length;
+            }
+            
+            // Calculate perpendicular vector (up)
+            float upX = 0;
+            float upY = 1; // Using world up vector
+            float upZ = 0;
+            
+            // Draw multiple vertical lines to create height
+            for (float offset = -LINE_HEIGHT/2; offset <= LINE_HEIGHT/2; offset += 1.0f) {
+                float y1 = current.getY() + 0.5f + offset * 0.1f;
+                float y2 = next.getY() + 0.5f + offset * 0.1f;
+                
+                builder.vertex(pose, current.getX() + 0.5f, y1, current.getZ() + 0.5f)
+                    .color(0.8f, 0f, 0f, 0.8f)
+                    .normal(0, 1, 0)
+                    .endVertex();
+                builder.vertex(pose, next.getX() + 0.5f, y2, next.getZ() + 0.5f)
+                    .color(0.8f, 0f, 0f, 0.8f)
+                    .normal(0, 1, 0)
+                    .endVertex();
+            }
         }
 
         // Finish rendering
         minecraft.renderBuffers().bufferSource().endBatch();
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
-        RenderSystem.lineWidth(1.0f); // Reset line width
+        RenderSystem.lineWidth(1.0f);
         
         poseStack.popPose();
     }
