@@ -19,6 +19,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.List;
 
@@ -28,7 +29,10 @@ public class BloodhuntManager {
     private static List<BlockPos> currentPath = null;
     private static LivingEntity currentTarget = null;
     private static float pathProgress = 0f;
-    private static final float PATH_ANIMATION_SPEED = 0.05f; // Adjust for faster/slower animation
+    private static final float PATH_ANIMATION_SPEED = 0.05f;
+    private static final float LINE_WIDTH = 5.0f; // Increased line width
+    private static int pathUpdateTimer = 0;
+    private static final int PATH_UPDATE_INTERVAL = 20; // Update path every second (20 ticks)
 
     @OnlyIn(Dist.CLIENT)
     @SubscribeEvent
@@ -45,12 +49,28 @@ public class BloodhuntManager {
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase == TickEvent.Phase.END && currentPath != null) {
+            Minecraft minecraft = Minecraft.getInstance();
+            if (minecraft.player == null || currentTarget == null) return;
+
             // Update path animation
             pathProgress = Math.min(1f, pathProgress + PATH_ANIMATION_SPEED);
             
+            // Check if we need to update the path
+            pathUpdateTimer++;
+            if (pathUpdateTimer >= PATH_UPDATE_INTERVAL) {
+                pathUpdateTimer = 0;
+                // Only update if target has moved significantly
+                BlockPos targetPos = currentTarget.blockPosition();
+                if (!currentPath.isEmpty() && !targetPos.equals(currentPath.get(currentPath.size() - 1))) {
+                    BlockPos start = minecraft.player.blockPosition();
+                    PathFinder pathFinder = new PathFinder(minecraft.level, start, targetPos, MAX_PATH_DISTANCE);
+                    currentPath = pathFinder.findPath();
+                    pathProgress = 1f; // Don't animate updates
+                }
+            }
+            
             // Check if player is close to next point
-            Minecraft minecraft = Minecraft.getInstance();
-            if (minecraft.player != null && !currentPath.isEmpty()) {
+            if (!currentPath.isEmpty()) {
                 BlockPos nextPoint = currentPath.get(0);
                 Vec3 playerPos = minecraft.player.position();
                 double distSq = playerPos.distanceToSqr(
@@ -61,7 +81,6 @@ public class BloodhuntManager {
                 
                 if (distSq < 0.25) { // Within 0.5 blocks
                     currentPath.remove(0);
-                    pathProgress = 0f;
                     
                     // If path is empty, stop tracking
                     if (currentPath.isEmpty()) {
@@ -93,6 +112,7 @@ public class BloodhuntManager {
         RenderSystem.defaultBlendFunc();
         RenderSystem.disableDepthTest();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        RenderSystem.lineWidth(LINE_WIDTH); // Set thicker line width
 
         // Draw the path
         VertexConsumer builder = minecraft.renderBuffers().bufferSource().getBuffer(RenderType.lines());
@@ -117,13 +137,13 @@ public class BloodhuntManager {
                 closestPointIndex = i;
             }
         }
-        
-        // Only render points ahead of the player
+
+        // Draw thicker lines by rendering multiple offset lines
         for (int i = closestPointIndex; i < pointsToShow - 1; i++) {
             BlockPos current = currentPath.get(i);
             BlockPos next = currentPath.get(i + 1);
             
-            // Draw line segment
+            // Main line
             builder.vertex(pose, current.getX() + 0.5f, current.getY() + 0.5f, current.getZ() + 0.5f)
                 .color(0.8f, 0f, 0f, 0.8f)
                 .normal(0, 1, 0)
@@ -138,6 +158,7 @@ public class BloodhuntManager {
         minecraft.renderBuffers().bufferSource().endBatch();
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
+        RenderSystem.lineWidth(1.0f); // Reset line width
         
         poseStack.popPose();
     }
@@ -156,11 +177,13 @@ public class BloodhuntManager {
         currentPath = pathFinder.findPath();
         currentTarget = target;
         pathProgress = 0f;
+        pathUpdateTimer = 0;
     }
 
     public static void stopTracking() {
         currentPath = null;
         currentTarget = null;
         pathProgress = 0f;
+        pathUpdateTimer = 0;
     }
 } 
