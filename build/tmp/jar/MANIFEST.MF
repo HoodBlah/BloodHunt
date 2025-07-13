@@ -5,5 +5,5 @@ Specification-Version: 1
 Implementation-Title: Cursor
 Implementation-Version: 1.0.0
 Implementation-Vendor: bloodhuntsareus
-Implementation-Timestamp: 2025-07-13T11:50:34-0400
+Implementation-Timestamp: 2025-07-13T11:56:17-0400
 

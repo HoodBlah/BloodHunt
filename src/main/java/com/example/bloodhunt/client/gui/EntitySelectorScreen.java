@@ -9,6 +9,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.util.Mth;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,7 +20,15 @@ public class EntitySelectorScreen extends Screen {
     private int selectedIndex = -1;
     private static final int BUTTON_HEIGHT = 20;
     private static final int BUTTON_WIDTH = 200;
-    private static final int MAX_RANGE = 50; // Maximum range to search for entities
+    private static final int MAX_RANGE = 50;
+    private static final int SCROLL_BAR_WIDTH = 6;
+    private int scrollOffset = 0;
+    private boolean isDragging = false;
+    private float scrollProgress = 0;
+    private List<Button> entityButtons = new ArrayList<>();
+    private Button endHuntButton;
+    private int contentHeight;
+    private int visibleHeight;
 
     public EntitySelectorScreen() {
         super(Component.translatable("screen.bloodhunt.entity_selector"));
@@ -30,32 +40,101 @@ public class EntitySelectorScreen extends Screen {
         super.init();
         updateNearbyEntities();
         
-        // Add entity buttons
+        // Calculate visible height for scrolling area
+        visibleHeight = this.height - 80; // Leave space for title and padding
+        
+        // Create entity buttons (they will be positioned during render)
+        entityButtons.clear();
         for (int i = 0; i < nearbyEntities.size(); i++) {
             final int index = i;
             LivingEntity entity = nearbyEntities.get(i);
             String name = entity.getName().getString();
             int distance = (int) entity.distanceTo(minecraft.player);
             
-            this.addRenderableWidget(Button.builder(
+            Button entityButton = Button.builder(
                 Component.literal(name + " (" + distance + "m)"),
-                button -> selectEntity(index))
-                .pos(this.width / 2 - BUTTON_WIDTH / 2, 40 + i * (BUTTON_HEIGHT + 5))
+                btn -> selectEntity(index))
+                .pos(this.width / 2 - BUTTON_WIDTH / 2, 0) // Y position will be set during render
                 .size(BUTTON_WIDTH, BUTTON_HEIGHT)
-                .build());
+                .build();
+            entityButtons.add(entityButton);
         }
 
-        // Add End Hunt button at the bottom
-        int bottomY = Math.max(40 + nearbyEntities.size() * (BUTTON_HEIGHT + 5), this.height - 60);
-        this.addRenderableWidget(Button.builder(
+        // Calculate total content height
+        contentHeight = nearbyEntities.size() * (BUTTON_HEIGHT + 5);
+
+        // Add End Hunt button in top right
+        endHuntButton = Button.builder(
             Component.literal("End Hunt"),
-            button -> {
+            btn -> {
                 BloodhuntManager.stopTracking();
                 this.onClose();
             })
-            .pos(this.width / 2 - BUTTON_WIDTH / 2, bottomY)
-            .size(BUTTON_WIDTH, BUTTON_HEIGHT)
-            .build());
+            .pos(this.width - BUTTON_WIDTH / 2 - 10, 10)
+            .size(BUTTON_WIDTH / 2, BUTTON_HEIGHT)
+            .build();
+        this.addRenderableWidget(endHuntButton);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        if (contentHeight > visibleHeight) {
+            float amount = (float) (delta * 20);
+            scrollProgress = Mth.clamp(scrollProgress - amount / (contentHeight - visibleHeight), 0.0F, 1.0F);
+            updateButtonPositions();
+        }
+        return true;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (isDragging && contentHeight > visibleHeight) {
+            float dragAmount = (float) dragY / (visibleHeight - BUTTON_HEIGHT);
+            scrollProgress = Mth.clamp(scrollProgress + dragAmount, 0.0F, 1.0F);
+            updateButtonPositions();
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (contentHeight > visibleHeight) {
+            // Check if click is in scroll bar area
+            int scrollBarX = this.width / 2 + BUTTON_WIDTH / 2 + 4;
+            if (mouseX >= scrollBarX && mouseX <= scrollBarX + SCROLL_BAR_WIDTH &&
+                mouseY >= 40 && mouseY <= 40 + visibleHeight) {
+                isDragging = true;
+                return true;
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        isDragging = false;
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private void updateButtonPositions() {
+        scrollOffset = Math.round(scrollProgress * (contentHeight - visibleHeight));
+        
+        // Update button positions
+        for (int i = 0; i < entityButtons.size(); i++) {
+            Button button = entityButtons.get(i);
+            int yPos = 40 + i * (BUTTON_HEIGHT + 5) - scrollOffset;
+            
+            // Only add buttons that are visible
+            if (yPos >= 40 && yPos <= 40 + visibleHeight) {
+                button.setY(yPos);
+                if (!this.renderables.contains(button)) {
+                    this.addRenderableWidget(button);
+                }
+            } else {
+                this.renderables.remove(button);
+            }
+        }
     }
 
     private void updateNearbyEntities() {
@@ -88,8 +167,40 @@ public class EntitySelectorScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         this.renderBackground(graphics);
+        
+        // Draw title
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
+        
+        // Draw entity count
+        String countText = nearbyEntities.size() + " Entities Found";
+        graphics.drawString(this.font, countText, 10, 15, 0xFFFFFF);
+        
+        // Update button positions
+        updateButtonPositions();
+        
+        // Draw scroll bar if needed
+        if (contentHeight > visibleHeight) {
+            int scrollBarX = this.width / 2 + BUTTON_WIDTH / 2 + 4;
+            int scrollBarHeight = Math.max(20, (int)((float)visibleHeight * visibleHeight / contentHeight));
+            int scrollBarY = 40 + (int)((visibleHeight - scrollBarHeight) * scrollProgress);
+            
+            // Draw scroll bar background
+            graphics.fill(scrollBarX, 40, scrollBarX + SCROLL_BAR_WIDTH, 40 + visibleHeight, 0x33FFFFFF);
+            // Draw scroll bar
+            graphics.fill(scrollBarX, scrollBarY, scrollBarX + SCROLL_BAR_WIDTH, scrollBarY + scrollBarHeight, 0xFFFFFFFF);
+        }
+        
         super.render(graphics, mouseX, mouseY, partialTicks);
+        
+        // Draw scissored content area
+        graphics.enableScissor(
+            0,
+            40,
+            this.width,
+            40 + visibleHeight
+        );
+        
+        graphics.disableScissor();
     }
 
     @Override
