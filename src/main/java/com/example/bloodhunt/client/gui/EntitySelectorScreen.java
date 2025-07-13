@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -16,9 +17,12 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.stream.Collectors;
 
 public class EntitySelectorScreen extends Screen {
     private List<LivingEntity> nearbyEntities;
+    private List<LivingEntity> filteredEntities;
+    private EditBox searchBox;
     private int selectedIndex = -1;
     private static final int BUTTON_HEIGHT = 32; // Increased height for entity preview
     private static final int BUTTON_WIDTH = 200;
@@ -36,6 +40,7 @@ public class EntitySelectorScreen extends Screen {
     public EntitySelectorScreen() {
         super(Component.translatable("screen.bloodhunt.entity_selector"));
         this.nearbyEntities = new ArrayList<>();
+        this.filteredEntities = new ArrayList<>();
     }
 
     @Override
@@ -43,28 +48,20 @@ public class EntitySelectorScreen extends Screen {
         super.init();
         updateNearbyEntities();
         
-        // Calculate visible height for scrolling area
-        visibleHeight = this.height - 80; // Leave space for title and padding
+        // Add search box
+        searchBox = new EditBox(this.font, this.width / 2 - BUTTON_WIDTH / 2, 40, BUTTON_WIDTH, 20, Component.literal("Search"));
+        searchBox.setMaxLength(50);
+        searchBox.setBordered(true);
+        searchBox.setVisible(true);
+        searchBox.setTextColor(0xFFFFFF);
+        searchBox.setValue("");
+        searchBox.setResponder(this::updateFilter);
+        this.addWidget(searchBox);
         
-        // Create entity buttons (they will be positioned during render)
-        entityButtons.clear();
-        for (int i = 0; i < nearbyEntities.size(); i++) {
-            final int index = i;
-            LivingEntity entity = nearbyEntities.get(i);
-            String name = entity.getName().getString();
-            int distance = (int) entity.distanceTo(minecraft.player);
-            
-            Button entityButton = Button.builder(
-                Component.literal("    " + name + " (" + distance + "m)"), // Add padding for entity render
-                btn -> selectEntity(index))
-                .pos(this.width / 2 - BUTTON_WIDTH / 2, 0) // Y position will be set during render
-                .size(BUTTON_WIDTH, BUTTON_HEIGHT)
-                .build();
-            entityButtons.add(entityButton);
-        }
-
-        // Calculate total content height
-        contentHeight = nearbyEntities.size() * (BUTTON_HEIGHT + 5);
+        // Calculate visible height for scrolling area
+        visibleHeight = this.height - 120; // Leave more space for search box
+        
+        updateEntityButtons();
 
         // Add End Hunt button in top right
         endHuntButton = Button.builder(
@@ -77,6 +74,47 @@ public class EntitySelectorScreen extends Screen {
             .size(BUTTON_WIDTH / 2, BUTTON_HEIGHT)
             .build();
         this.addRenderableWidget(endHuntButton);
+    }
+
+    private void updateFilter(String filter) {
+        if (filter.isEmpty()) {
+            filteredEntities = new ArrayList<>(nearbyEntities);
+        } else {
+            String lowercaseFilter = filter.toLowerCase();
+            filteredEntities = nearbyEntities.stream()
+                .filter(entity -> entity.getName().getString().toLowerCase().contains(lowercaseFilter))
+                .collect(Collectors.toList());
+        }
+        updateEntityButtons();
+    }
+
+    private void updateEntityButtons() {
+        // Remove old buttons
+        entityButtons.forEach(this::removeWidget);
+        entityButtons.clear();
+        
+        // Create entity buttons
+        for (int i = 0; i < filteredEntities.size(); i++) {
+            final int index = i;
+            LivingEntity entity = filteredEntities.get(i);
+            String name = entity.getName().getString();
+            int distance = (int) entity.distanceTo(minecraft.player);
+            
+            Button entityButton = Button.builder(
+                Component.literal("    " + name + " (" + distance + "m)"),
+                btn -> selectEntity(index))
+                .pos(this.width / 2 - BUTTON_WIDTH / 2, 0)
+                .size(BUTTON_WIDTH, BUTTON_HEIGHT)
+                .build();
+            entityButtons.add(entityButton);
+        }
+
+        // Calculate total content height
+        contentHeight = filteredEntities.size() * (BUTTON_HEIGHT + 5);
+        
+        // Reset scroll position
+        scrollProgress = 0;
+        updateButtonPositions();
     }
 
     private void renderEntityPreview(GuiGraphics graphics, LivingEntity entity, int x, int y, float scale) {
@@ -158,10 +196,10 @@ public class EntitySelectorScreen extends Screen {
         // Update button positions
         for (int i = 0; i < entityButtons.size(); i++) {
             Button button = entityButtons.get(i);
-            int yPos = 40 + i * (BUTTON_HEIGHT + 5) - scrollOffset;
+            int yPos = 70 + i * (BUTTON_HEIGHT + 5) - scrollOffset;
             
             // Only add buttons that are visible
-            if (yPos >= 40 && yPos <= 40 + visibleHeight) {
+            if (yPos >= 70 && yPos <= 70 + visibleHeight) {
                 button.setY(yPos);
                 if (!this.renderables.contains(button)) {
                     this.addRenderableWidget(button);
@@ -188,12 +226,15 @@ public class EntitySelectorScreen extends Screen {
         // Sort by distance
         nearbyEntities.sort(Comparator.comparingDouble(
             entity -> entity.distanceToSqr(minecraft.player)));
+            
+        // Initialize filtered list
+        filteredEntities = new ArrayList<>(nearbyEntities);
     }
 
     private void selectEntity(int index) {
-        if (index >= 0 && index < nearbyEntities.size()) {
+        if (index >= 0 && index < filteredEntities.size()) {
             selectedIndex = index;
-            LivingEntity target = nearbyEntities.get(index);
+            LivingEntity target = filteredEntities.get(index);
             BloodhuntManager.startTracking(target);
             this.onClose();
         }
@@ -207,8 +248,11 @@ public class EntitySelectorScreen extends Screen {
         graphics.drawCenteredString(this.font, this.title, this.width / 2, 20, 0xFFFFFF);
         
         // Draw entity count
-        String countText = nearbyEntities.size() + " Entities Found";
+        String countText = filteredEntities.size() + "/" + nearbyEntities.size() + " Entities Found";
         graphics.drawString(this.font, countText, 10, 15, 0xFFFFFF);
+        
+        // Render search box
+        searchBox.render(graphics, mouseX, mouseY, partialTicks);
         
         // Update button positions
         updateButtonPositions();
@@ -217,10 +261,10 @@ public class EntitySelectorScreen extends Screen {
         if (contentHeight > visibleHeight) {
             int scrollBarX = this.width / 2 + BUTTON_WIDTH / 2 + 4;
             int scrollBarHeight = Math.max(20, (int)((float)visibleHeight * visibleHeight / contentHeight));
-            int scrollBarY = 40 + (int)((visibleHeight - scrollBarHeight) * scrollProgress);
+            int scrollBarY = 70 + (int)((visibleHeight - scrollBarHeight) * scrollProgress);
             
             // Draw scroll bar background
-            graphics.fill(scrollBarX, 40, scrollBarX + SCROLL_BAR_WIDTH, 40 + visibleHeight, 0x33FFFFFF);
+            graphics.fill(scrollBarX, 70, scrollBarX + SCROLL_BAR_WIDTH, 70 + visibleHeight, 0x33FFFFFF);
             // Draw scroll bar
             graphics.fill(scrollBarX, scrollBarY, scrollBarX + SCROLL_BAR_WIDTH, scrollBarY + scrollBarHeight, 0xFFFFFFFF);
         }
@@ -230,22 +274,22 @@ public class EntitySelectorScreen extends Screen {
         // Draw scissored content area
         graphics.enableScissor(
             0,
-            40,
+            70,
             this.width,
-            40 + visibleHeight
+            70 + visibleHeight
         );
         
         // Render entity previews
         for (int i = 0; i < entityButtons.size(); i++) {
             Button button = entityButtons.get(i);
             if (this.renderables.contains(button)) {
-                LivingEntity entity = nearbyEntities.get(i);
+                LivingEntity entity = filteredEntities.get(i);
                 renderEntityPreview(
                     graphics,
                     entity,
-                    button.getX() + 4, // Small padding from button edge
-                    button.getY() + (BUTTON_HEIGHT - ENTITY_RENDER_SIZE) / 2, // Center vertically
-                    16.0F // Scale factor for preview
+                    button.getX() + 4,
+                    button.getY() + (BUTTON_HEIGHT - ENTITY_RENDER_SIZE) / 2,
+                    16.0F
                 );
             }
         }

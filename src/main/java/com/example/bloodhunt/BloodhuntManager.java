@@ -25,9 +25,12 @@ public class BloodhuntManager {
     private static List<BlockPos> currentPath = null;
     private static LivingEntity currentTarget = null;
     private static int pathUpdateTimer = 0;
-    private static final int PATH_UPDATE_INTERVAL = 6;
+    private static final int PATH_UPDATE_INTERVAL = 20; // Increased from 6 to 20 ticks (1 second)
     private static final Random random = new Random();
     private static final PathManager pathManager = new PathManager();
+    private static BlockPos lastPlayerPos = null;
+    private static BlockPos lastTargetPos = null;
+    private static final double MIN_MOVEMENT_THRESHOLD = 1.0; // Minimum blocks moved before updating
 
     @OnlyIn(Dist.CLIENT)
     @SubscribeEvent
@@ -53,12 +56,26 @@ public class BloodhuntManager {
             pathUpdateTimer++;
             if (pathUpdateTimer >= PATH_UPDATE_INTERVAL) {
                 pathUpdateTimer = 0;
-                // Update path if player or target has moved
+                
                 BlockPos playerPos = minecraft.player.blockPosition();
                 BlockPos targetPos = currentTarget.blockPosition();
                 
-                if (!currentPath.isEmpty() && 
-                    (!playerPos.equals(currentPath.get(0)) || !targetPos.equals(currentPath.get(currentPath.size() - 1)))) {
+                // Check if either player or target has moved significantly
+                boolean needsUpdate = false;
+                if (lastPlayerPos == null || lastTargetPos == null) {
+                    needsUpdate = true;
+                } else {
+                    double playerMovement = Math.sqrt(lastPlayerPos.distSqr(playerPos));
+                    double targetMovement = Math.sqrt(lastTargetPos.distSqr(targetPos));
+                    needsUpdate = playerMovement > MIN_MOVEMENT_THRESHOLD || targetMovement > MIN_MOVEMENT_THRESHOLD;
+                }
+                
+                // Only update path if needed
+                if (needsUpdate) {
+                    // Update last positions
+                    lastPlayerPos = playerPos;
+                    lastTargetPos = targetPos;
+                    
                     // Recalculate path
                     PathFinder pathFinder = new PathFinder(minecraft.level, playerPos, targetPos, MAX_PATH_DISTANCE);
                     currentPath = pathFinder.findPath();
@@ -105,12 +122,16 @@ public class BloodhuntManager {
         
         currentTarget = target;
         pathUpdateTimer = 0;
+        lastPlayerPos = start;
+        lastTargetPos = targetPos;
     }
 
     public static void stopTracking() {
         currentPath = null;
         currentTarget = null;
         pathUpdateTimer = 0;
+        lastPlayerPos = null;
+        lastTargetPos = null;
         
         // Clear the path
         Minecraft minecraft = Minecraft.getInstance();

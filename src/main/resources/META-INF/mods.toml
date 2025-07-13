@@ -1,6 +1,7 @@
 modLoader="javafml"
 loaderVersion="[47,)"
 license="MIT"
+issueTrackerURL="https://github.com/HoodBlah/BloodHunt/issues"
 
 [[mods]]
 modId="bloodhunt"
