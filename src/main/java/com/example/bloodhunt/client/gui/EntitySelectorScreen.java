@@ -10,7 +10,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.util.Mth;
+import com.mojang.blaze3d.vertex.PoseStack;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -18,10 +20,11 @@ import java.util.Comparator;
 public class EntitySelectorScreen extends Screen {
     private List<LivingEntity> nearbyEntities;
     private int selectedIndex = -1;
-    private static final int BUTTON_HEIGHT = 20;
+    private static final int BUTTON_HEIGHT = 32; // Increased height for entity preview
     private static final int BUTTON_WIDTH = 200;
     private static final int MAX_RANGE = 50;
     private static final int SCROLL_BAR_WIDTH = 6;
+    private static final int ENTITY_RENDER_SIZE = 24; // Size of entity preview
     private int scrollOffset = 0;
     private boolean isDragging = false;
     private float scrollProgress = 0;
@@ -52,7 +55,7 @@ public class EntitySelectorScreen extends Screen {
             int distance = (int) entity.distanceTo(minecraft.player);
             
             Button entityButton = Button.builder(
-                Component.literal(name + " (" + distance + "m)"),
+                Component.literal("    " + name + " (" + distance + "m)"), // Add padding for entity render
                 btn -> selectEntity(index))
                 .pos(this.width / 2 - BUTTON_WIDTH / 2, 0) // Y position will be set during render
                 .size(BUTTON_WIDTH, BUTTON_HEIGHT)
@@ -74,6 +77,38 @@ public class EntitySelectorScreen extends Screen {
             .size(BUTTON_WIDTH / 2, BUTTON_HEIGHT)
             .build();
         this.addRenderableWidget(endHuntButton);
+    }
+
+    private void renderEntityPreview(GuiGraphics graphics, LivingEntity entity, int x, int y, float scale) {
+        if (entity == null || minecraft == null) return;
+
+        PoseStack poseStack = graphics.pose();
+        poseStack.pushPose();
+        
+        // Position the entity in front of GUI
+        poseStack.translate(
+            x + ENTITY_RENDER_SIZE / 2.0F,  // Center horizontally
+            y + ENTITY_RENDER_SIZE,         // Bottom align
+            50.0                            // Put in front of GUI
+        );
+        
+        // Scale based on entity size
+        float entityHeight = entity.getBbHeight();
+        float entityWidth = entity.getBbWidth();
+        float scaleFactor = scale / Math.max(entityHeight, entityWidth);
+        poseStack.scale(scaleFactor, -scaleFactor, scaleFactor); // Negative Y to fix upside down
+        
+        // Get the render dispatcher and buffer
+        EntityRenderDispatcher dispatcher = minecraft.getEntityRenderDispatcher();
+        dispatcher.setRenderShadow(false);
+        
+        // Render with proper buffer handling
+        var bufferSource = minecraft.renderBuffers().bufferSource();
+        dispatcher.render(entity, 0.0D, 0.0D, 0.0D, 180.0F, 1.0F, poseStack, bufferSource, 15728880);
+        bufferSource.endBatch();
+        
+        poseStack.popPose();
+        dispatcher.setRenderShadow(true);
     }
 
     @Override
@@ -199,6 +234,21 @@ public class EntitySelectorScreen extends Screen {
             this.width,
             40 + visibleHeight
         );
+        
+        // Render entity previews
+        for (int i = 0; i < entityButtons.size(); i++) {
+            Button button = entityButtons.get(i);
+            if (this.renderables.contains(button)) {
+                LivingEntity entity = nearbyEntities.get(i);
+                renderEntityPreview(
+                    graphics,
+                    entity,
+                    button.getX() + 4, // Small padding from button edge
+                    button.getY() + (BUTTON_HEIGHT - ENTITY_RENDER_SIZE) / 2, // Center vertically
+                    16.0F // Scale factor for preview
+                );
+            }
+        }
         
         graphics.disableScissor();
     }
