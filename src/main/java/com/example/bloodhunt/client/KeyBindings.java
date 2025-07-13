@@ -3,17 +3,23 @@ package com.example.bloodhunt.client;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraftforge.client.settings.KeyConflictContext;
-import org.lwjgl.glfw.GLFW;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.common.Mod;
+import com.example.bloodhunt.Bloodhunt;
 
+@Mod.EventBusSubscriber(modid = Bloodhunt.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class KeyBindings {
-    public static final String KEY_CATEGORY_BLOODHUNT = "key.category.bloodhunt";
-    public static final String KEY_OPEN_SELECTOR = "key.bloodhunt.open_selector";
-    
     public static final KeyMapping OPEN_SELECTOR_KEY = new KeyMapping(
-        KEY_OPEN_SELECTOR,
+        "key.bloodhunt.open_selector",
         KeyConflictContext.IN_GAME,
         InputConstants.Type.KEYSYM,
-        GLFW.GLFW_KEY_B, // Default to B key
-        KEY_CATEGORY_BLOODHUNT
+        InputConstants.KEY_B,
+        "key.categories.bloodhunt"
     );
+
+    @SubscribeEvent
+    public static void init(RegisterKeyMappingsEvent event) {
+        event.register(OPEN_SELECTOR_KEY);
+    }
 } 
